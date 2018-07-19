@@ -713,8 +713,7 @@ def align_gene_sections(name, xis_dict, sequences_to_align):
     genome = open(args.genome, 'r')
     element_cut_coordinates = (element_start_positon, element_end_positon)
     element_file = open(name + '-' + str(xis_count) + '_interruption_element.fna', 'w')
-    element_sequence = sequence_cutter(genome, xis_dict['contig accession'], element_cut_coordinates)
-    element_file.write(element_sequence + '\n')
+    element_file.write(sequence_cutter(genome, xis_dict['contig accession'], element_cut_coordinates) + '\n')
     element_file.close()
     genome.close()
 
