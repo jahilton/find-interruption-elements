@@ -246,7 +246,7 @@ def find_xis_candidates(name):
 
         # log characteristics of the xis candidate to be used in later processing
         xis_dict = {}
-        xis_dict['coordinates'] = xis_coordinates
+        xis_dict['xis coordinates'] = xis_coordinates
         xis_dict['count'] = xis_count
         xis_dict['contig'] = hit['title']
         xis_dict['contig accession'] = hit['accession']
@@ -472,7 +472,7 @@ def find_interrupted_gene(name, xis_dict, xis_plus_flank):
 
 def find_all_gene_regions(name, xis_dict, reference_gene_aa, reference_gene_dna):
     xis_count = xis_dict['count']
-    xis_coordinates = xis_dict['coordinates']
+    xis_coordinates = xis_dict['xis coordinates']
     xis_contig = xis_dict['contig']
 
     # BLAST reference genes into genome
@@ -702,8 +702,8 @@ def align_gene_sections(name, xis_dict, sequences_to_align):
     xis_dict['element end position'] = element_end_positon
     xis_dict['element length'] = element_end_positon - element_start_positon + 1
 
-    start_to_start = abs(element_start_positon - xis_dict['coordinates'][0])
-    end_to_end = abs(element_end_positon - xis_dict['coordinates'][1])
+    start_to_start = abs(element_start_positon - xis_dict['xis coordinates'][0])
+    end_to_end = abs(element_end_positon - xis_dict['xis coordinates'][1])
     xis_dict['xis to edge'] = (min(start_to_start, end_to_end))
     if start_to_start == xis_dict['xis to edge']:
         xis_dict['xis location'] = 'begin'
@@ -713,8 +713,14 @@ def align_gene_sections(name, xis_dict, sequences_to_align):
     genome = open(args.genome, 'r')
     element_cut_coordinates = (element_start_positon, element_end_positon)
     element_file = open(name + '-' + str(xis_count) + '_interruption_element.fna', 'w')
-    element_file.write(sequence_cutter(genome, xis_dict['contig accession'], element_cut_coordinates) + '\n')
+    element_sequence = sequence_cutter(genome, xis_dict['contig accession'], element_cut_coordinates)
+    element_file.write(element_sequence + '\n')
     element_file.close()
+    genome.close()
+
+    genome = open(args.genome, 'r')
+    sequence = sequence_cutter(genome, xis_dict['contig accession'], element_cut_coordinates, 'FALSE')
+    xis_dict['element GC'] = (sequence.count('G') + sequence.count('C'))/len(sequence)
     genome.close()
 
     '''
@@ -756,13 +762,14 @@ def align_gene_sections(name, xis_dict, sequences_to_align):
     print(xis_dict['reference gene'])
     print(xis_dict['direct repeat'])
     print(xis_dict['interruption position'])
-    #print xis identifier (or just contig/coordinates?)
     print(xis_dict['class'])
+    print(xis_dict['xis coordinates'][0]) #NEED TO CHECK THE XIS START
+    print(xis_dict['xis coordinates'][1]) #NEED TO CHECK THE XIS END
     print(xis_dict['xis to edge']) # THIS IS OFF, NEED TO CHECK THE XIS COORDINATES VS WHAT I FOUND IN PUB.
     print(xis_dict['xis location'])
     #print xis direction
     print(xis_dict['element length'])
-    #print element gc
+    print(xis_dict['element GC']) # THIS IS OFF, NEED TO CHECK ELEMENT SEQUENCE
     print(xis_dict['contig accession'])
     print(xis_dict['element start position'])
     print(xis_dict['element end position'])
