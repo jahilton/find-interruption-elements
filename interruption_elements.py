@@ -132,6 +132,33 @@ recombinase_class = {
     'Tol9009DRAFT_00004090': 'serine'
 }
 
+reference_genes = {
+    '646565097': 'transposase (Ava_B0242)',
+    '648049578': 'nifE',
+    '648049580': 'nifK',
+    '648049581': 'nifD',
+    '648049582': 'nifH',
+    '648049585': 'fdxN',
+    '648049586': 'NifB',
+    '648050508': 'coxA',
+    '648050542': 'integrase family protein (Aazo_2682)',
+    '648051374': 'hupL',
+    '648051375': 'hupS',
+    '648051418': 'hglE',
+    '648051575': 'flv3B',
+    '648052264': 'NADPH-dependent FMN reductase (Aazo_5221)',
+    '2505798824': 'phospholipase D/transphosphatidylase (Cal7507_0570)',
+    '2505803755': 'nifJ',
+    '2505803979': 'FAD-dependent oxidoreductase (Cal7507_5656)',
+    '2506492697': 'primase P4 (Ana7108_2845)',
+    '2507085412': 'ATP-dependent DNA helicase (Pse6802_0098)',
+    '2507088806': 'predicted integral membrane protein (Pse6802_3453)',
+    '2507477837': 'caspase domain-containing protein (Cal7103DRAFT_00047390)',
+    '2509768028': 'hypothetical protein (CylstDRAFT_1988)',
+    '2509784323': 'arabinose efflux permease (Mic7126DRAFT_5075)',
+    '2517243815': 'transposase (ISSoc8) (Mas10914DRAFT_5058)'
+}
+
 
 def getArgs():
     parser = argparse.ArgumentParser(
@@ -428,6 +455,11 @@ def find_interrupted_gene(name, xis_dict, xis_plus_flank):
         reference_gene_dna_file.write(sequence_cutter(open('interrupted_genes/known_interrupted_genes_protein.fna', 'r'), lowest_coverage_accession, 'all'))
         reference_gene_dna_file.close()
 
+    if lowest_coverage_accession in reference_genes.keys():
+        xis_dict['reference gene'] = reference_genes[lowest_coverage_accession]
+    else:
+        xis_dict['reference gene'] = lowest_coverage_accession
+
     print(name + '-' + str(xis_count) + ':reference gene identified: ' + lowest_coverage_accession)
     
     # pass on the reference gene to search the whole genome for all gene regions
@@ -523,6 +555,10 @@ def find_all_gene_regions(name, xis_dict, reference_gene_aa, reference_gene_dna)
         contig_title = hitsd[hit]['contig_title']
         sequences_to_align.write(sequence_cutter(genome, contig_title, cut_coordinates) + '\n')
         genome.close()
+        #TRYING TO GET THE CONTIG COORDINATES TO CARRY OVER BUT ITS NOT WORKING VERY WELL YET
+        xis_dict[hit + '_contig_start'] = start_coord
+        xis_dict[hit + '_contig_end'] = end_coord
+    print(xis_dict)
 
     # write the reference gene for the interrupted gene to the file for alignment with teh gene regions
     for line in open(reference_gene_dna, 'r'):
@@ -690,7 +726,7 @@ def align_gene_sections(name, xis_dict, sequences_to_align):
     print('-----------------')
     print(args.name)
     print(xis_dict['count'])
-    #print interrupted gene (also reference gene)
+    print(xis_dict['reference gene'])
     print(xis_dict['direct repeat'])
     print(xis_dict['interruption position'])
     #print xis identifier (or just contig/coordinates?)
