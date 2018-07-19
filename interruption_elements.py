@@ -1,3 +1,5 @@
+#NEED TO CHECK SEQUENCE OUTPUT FILES AGAINST ACTUAL RESULTS
+
 # install ncbi tools
 # pull nr db if local blasting
 # install clustal-omega (install argstable for this)
@@ -213,6 +215,7 @@ def find_xis_candidates(name):
                     count += 1
                     xis_hits_dict['hit' + str(count)] = {}
                     xis_hits_dict['hit' + str(count)]['title'] = alignment.title
+                    xis_hits_dict['hit' + str(count)]['accession'] = alignment.accession
                     xis_hits_dict['hit' + str(count)]['start'] = hsp.sbjct_start
                     xis_hits_dict['hit' + str(count)]['end'] = hsp.sbjct_end
                     xis_hits_dict['hit' + str(count)]['top_xis_hit'] = blast_record.query
@@ -246,6 +249,7 @@ def find_xis_candidates(name):
         xis_dict['coordinates'] = xis_coordinates
         xis_dict['count'] = xis_count
         xis_dict['contig'] = hit['title']
+        xis_dict['contig accession'] = hit['accession']
         xis_dict['class'] = recombinase_class[hit['top_xis_hit']]
         
         # cut the xis_candidates and flanking regions from the contigs based on BLAST results
@@ -457,10 +461,10 @@ def find_interrupted_gene(name, xis_dict, xis_plus_flank):
 
     if lowest_coverage_accession in reference_genes.keys():
         xis_dict['reference gene'] = reference_genes[lowest_coverage_accession]
+        print(name + '-' + str(xis_count) + ':reference gene identified: ' + reference_genes[lowest_coverage_accession])
     else:
         xis_dict['reference gene'] = lowest_coverage_accession
-
-    print(name + '-' + str(xis_count) + ':reference gene identified: ' + lowest_coverage_accession)
+        print(name + '-' + str(xis_count) + ':reference gene identified: ' + lowest_coverage_accession)
     
     # pass on the reference gene to search the whole genome for all gene regions
     find_all_gene_regions(name, xis_dict, name + '-' + str(xis_count) + '_reference_gene.faa', name + '-' + str(xis_count) + '_reference_gene.fna')
@@ -555,10 +559,6 @@ def find_all_gene_regions(name, xis_dict, reference_gene_aa, reference_gene_dna)
         contig_title = hitsd[hit]['contig_title']
         sequences_to_align.write(sequence_cutter(genome, contig_title, cut_coordinates) + '\n')
         genome.close()
-        #TRYING TO GET THE CONTIG COORDINATES TO CARRY OVER BUT ITS NOT WORKING VERY WELL YET
-        xis_dict[hit + '_contig_start'] = start_coord
-        xis_dict[hit + '_contig_end'] = end_coord
-    print(xis_dict)
 
     # write the reference gene for the interrupted gene to the file for alignment with teh gene regions
     for line in open(reference_gene_dna, 'r'):
@@ -598,9 +598,13 @@ def align_gene_sections(name, xis_dict, sequences_to_align):
                 dic[base_count]['ref_position'] = ref_base_count
                 max_ref_position = ref_base_count
         else:
+            seq_base_count = int(record.description.split(':')[1]) - 1
             for base in record.seq:
                 base_count += 1
                 dic[base_count][seq_count] = base
+                if base != '-':
+                    seq_base_count += 1
+                dic[base_count]['seq' + str(seq_count) + '_position'] = seq_base_count
 
     #create a list of absolute positions of alignment where 2 gene sections match
     equal_positions = []
@@ -678,7 +682,12 @@ def align_gene_sections(name, xis_dict, sequences_to_align):
             absolute_start_position = uber_dict[i]['start_position']
             ref_gene_start_position = dic[uber_dict[i]['start_position']]['ref_position']
             direct_repeat = uber_dict[i]['direct_repeat']
-            direct_repeat_lengths.append(len(uber_dict[i]['direct_repeat']))
+            direct_repeat_length = len(uber_dict[i]['direct_repeat'])
+            direct_repeat_lengths.append(direct_repeat_length)
+            #UNSURE IF I NEED TO ADD ONE TO THE 1ST KEY
+            #ALSO NEED TO ADD THIS TO THE 2ND CALCULATION AFTER IF SECOND_COUNT...
+            element_start_positon = dic[uber_dict[i]['start_position']]['seq1_position'] + 1
+            element_end_positon = dic[uber_dict[i]['start_position']]['seq2_position']
             narrowed_dict[i] = uber_dict[i]
     if second_count > 1:
         for i in narrowed_dict.keys():
@@ -689,6 +698,24 @@ def align_gene_sections(name, xis_dict, sequences_to_align):
 
     xis_dict['direct repeat'] = direct_repeat
     xis_dict['interruption position'] = ref_gene_start_position
+    xis_dict['element start position'] = element_start_positon
+    xis_dict['element end position'] = element_end_positon
+    xis_dict['element length'] = element_end_positon - element_start_positon + 1
+
+    start_to_start = abs(element_start_positon - xis_dict['coordinates'][0])
+    end_to_end = abs(element_end_positon - xis_dict['coordinates'][1])
+    xis_dict['xis to edge'] = (min(start_to_start, end_to_end))
+    if start_to_start == xis_dict['xis to edge']:
+        xis_dict['xis location'] = 'begin'
+    else:
+        xis_dict['xis location'] = 'end'
+
+    genome = open(args.genome, 'r')
+    element_cut_coordinates = (element_start_positon, element_end_positon)
+    element_file = open(name + '-' + str(xis_count) + '_interruption_element.fna', 'w')
+    element_file.write(sequence_cutter(genome, xis_dict['contig accession'], element_cut_coordinates) + '\n')
+    element_file.close()
+    genome.close()
 
     '''
     #OPTION2
@@ -731,19 +758,18 @@ def align_gene_sections(name, xis_dict, sequences_to_align):
     print(xis_dict['interruption position'])
     #print xis identifier (or just contig/coordinates?)
     print(xis_dict['class'])
-    #print xis distance to edge of element
-    #print xis location (being or end of element)
+    print(xis_dict['xis to edge']) # THIS IS OFF, NEED TO CHECK THE XIS COORDINATES VS WHAT I FOUND IN PUB.
+    print(xis_dict['xis location'])
     #print xis direction
-    #print element length
+    print(xis_dict['element length'])
     #print element gc
-    print(xis_dict['contig'])
-    #print element start coordinate
-    #print element end coordinate
+    print(xis_dict['contig accession'])
+    print(xis_dict['element start position'])
+    print(xis_dict['element end position'])
 
     # need to print results overview to a file:
 
-    # need output:
-    # IE sequence
+    # ADD TO PRINTED UPDATES 'COMPLETE' OR SOMETHING
 
 if __name__ == '__main__':
     args = getArgs()
