@@ -2,7 +2,7 @@
 # pull nr db if local blasting
 # install clustal-omega (install argstable for this)
 
-# $ export PATH=$PATH:/Users/jason/code/IE_code/NCBI_Resources/ncbi-blast-2.4.0+/bin/ ----- how to get this permanent?
+# $ export PATH=$PATH:/Users/jason/code/find-interruption-elements-side/NCBI_Resources/ncbi-blast-2.4.0+/bin/ ----- how to get this permanent?
 
 # first requires the db to go through makeblastdb - can i do that here in python? (make it happen only if it isn't already made)
 # makeblastdb -in genome -dbtype nucl -parse_seqids
@@ -16,10 +16,12 @@
 
 from Bio import Entrez
 from Bio import SeqIO
+from Bio import AlignIO
 from Bio.Blast.Applications import NcbitblastnCommandline
 from Bio.Blast.Applications import NcbiblastxCommandline
 from Bio.Align.Applications import ClustalOmegaCommandline
 from Bio.Blast import NCBIXML
+from difflib import SequenceMatcher
 import argparse
 
 EPILOG = '''
@@ -142,6 +144,8 @@ def getArgs():
                         help="Short nickname for genome, to be used in output files")
     parser.add_argument('--xis_set',
                         help="The protein sequences of known xis genes")
+    parser.add_argument('--protein_set',
+                        help="The protein sequence database used to identify interrupted genes")
     parser.add_argument('--flank',
                         help="The distance away from candidate xis genes to search for interrupted genes. Deafault is 3000",
                         default=3000)
@@ -351,11 +355,14 @@ def find_interrupted_gene(name, xis_dict, xis_plus_flank):
                         off_limits_range.append(i)
     blast_results.close()
   
-    # CHANGE - make --nr user input?
     # if interrupted gene isn't a previously known gene, BLAST against a larger protein database
-    # for local blast against nr, use...
     if sortme == {}: # and some other criteria about the BLAST results?
-        blastx_cline = NcbiblastxCommandline(query=xis_plus_flank, db='NCBI_resources/bacteria_nr_protein/bacteria_nonredundant_protein.faa', culling_limit=15, evalue=1e-15, outfmt=5, out=name + '-' + str(xis_count) + '_xisflank_x_nr.xml')
+        # for web blast, use...
+        if args.protein_set == 'web':
+            blastx_cline = NcbiblastxCommandline(remote='remote', query='xis_flank.fasta', db='refseq_protein', culling_limit=15, evalue=0.00000000000001, outfmt=5, out='xisflank_x_refseqprot.xml')
+        # for local blast against a protein db, use...
+        else:
+            blastx_cline = NcbiblastxCommandline(query=xis_plus_flank, db=args.protein_set, culling_limit=15, evalue=1e-15, outfmt=5, out=name + '-' + str(xis_count) + '_xisflank_x_nr.xml')
         print(str(blastx_cline))
         stdout, stderr = blastx_cline()
         print(name + '-' + str(xis_count) + ':xis w/ flank - nr BLAST complete')
@@ -363,8 +370,6 @@ def find_interrupted_gene(name, xis_dict, xis_plus_flank):
         blast_results = open(name + '-' + str(xis_count) + '_xisflank_x_nr.xml', 'r')
         blast_records = NCBIXML.parse(blast_results)
         
-        # for web blast, use...
-        # blastx_cline = NcbiblastxCommandline(remote='remote', query='xis_flank.fasta', db='refseq_protein', culling_limit=15, evalue=0.00000000000001, outfmt=5, out='xisflank_x_refseqprot.xml')
 
         for blast_record in blast_records:
             for alignment in blast_record.alignments:
@@ -400,9 +405,13 @@ def find_interrupted_gene(name, xis_dict, xis_plus_flank):
         seq_record = SeqIO.read(handle, "fasta")
         handle.close()
 
-        reference_gene_file = open(name + '-' + str(xis_count) + '_reference_gene.fasta', 'w')
-        reference_gene_file.write(">" + str(seq_record.id) + '\n' + str(seq_record.seq))
-        reference_gene_file.close()
+        reference_gene_aa_file = open(name + '-' + str(xis_count) + '_reference_gene.faa', 'w')
+        reference_gene_aa_file.write(">" + str(seq_record.id) + '\n' + str(seq_record.seq))
+        reference_gene_aa_file.close()
+
+        reference_gene_dna_file = open(name + '-' + str(xis_count) + '_reference_gene.fna', 'w')
+        reference_gene_dna_file.write(">" + str(seq_record.id) + '\n' + str(seq_record.seq))
+        reference_gene_dna_file.close()
 
     # if a previously known interrutped gene was found in the flanking regions, pull the DNA sequence of that gene
     else:
@@ -411,22 +420,27 @@ def find_interrupted_gene(name, xis_dict, xis_plus_flank):
             if sortme[key] == lowest_coverage:
                 lowest_coverage_accession = key
 
-        reference_gene_file = open(name + '-' + str(xis_count) + '_reference_gene.fasta', 'w')
-        reference_gene_file.write(sequence_cutter(open('interrupted_genes/known_interrupted_genes_protein.fna', 'r'), lowest_coverage_accession, 'all'))
-        reference_gene_file.close()
+        reference_gene_aa_file = open(name + '-' + str(xis_count) + '_reference_gene.faa', 'w')
+        reference_gene_aa_file.write(sequence_cutter(open('interrupted_genes/known_interrupted_genes_protein.faa', 'r'), lowest_coverage_accession, 'all'))
+        reference_gene_aa_file.close()
+
+        reference_gene_dna_file = open(name + '-' + str(xis_count) + '_reference_gene.fna', 'w')
+        reference_gene_dna_file.write(sequence_cutter(open('interrupted_genes/known_interrupted_genes_protein.fna', 'r'), lowest_coverage_accession, 'all'))
+        reference_gene_dna_file.close()
+
     print(name + '-' + str(xis_count) + ':reference gene identified: ' + lowest_coverage_accession)
     
     # pass on the reference gene to search the whole genome for all gene regions
-    find_all_gene_regions(name, xis_dict, name + '-' + str(xis_count) + '_reference_gene.fasta')
+    find_all_gene_regions(name, xis_dict, name + '-' + str(xis_count) + '_reference_gene.faa', name + '-' + str(xis_count) + '_reference_gene.fna')
 
 
-def find_all_gene_regions(name, xis_dict, reference_gene):
+def find_all_gene_regions(name, xis_dict, reference_gene_aa, reference_gene_dna):
     xis_count = xis_dict['count']
     xis_coordinates = xis_dict['coordinates']
     xis_contig = xis_dict['contig']
 
     # BLAST reference genes into genome
-    tblastn_cline = NcbitblastnCommandline(query=reference_gene, db=args.genome, evalue=1e-10, outfmt=5, out=name + '-' + str(xis_count) + "_referencegene_tn_genome.xml")
+    tblastn_cline = NcbitblastnCommandline(query=reference_gene_aa, db=args.genome, evalue=1e-10, outfmt=5, out=name + '-' + str(xis_count) + "_referencegene_tn_genome.xml")
     print(str(tblastn_cline))
     stdout, stderr = tblastn_cline()
     print(name + '-' + str(xis_count) + ':reference gene - genome BLAST complete')
@@ -511,31 +525,188 @@ def find_all_gene_regions(name, xis_dict, reference_gene):
         genome.close()
 
     # write the reference gene for the interrupted gene to the file for alignment with teh gene regions
-    for line in open(reference_gene, 'r'):
+    for line in open(reference_gene_dna, 'r'):
         sequences_to_align.write(line)
     sequences_to_align.close()
 
     print(name + '-' + str(xis_count) + ':gene sections extracted')
 
     # pass on the alignment file to be aligned
-    align_gene_sections(name, xis_dict, sequences_to_align)
+    align_gene_sections(name, xis_dict, name + '-' + str(xis_count) + '_gene_sections_w_reference.fna')
 
 
 def align_gene_sections(name, xis_dict, sequences_to_align):
-    out_file = name + '-' + str(xis_dict['count'] + "_aligned.fasta"
+    xis_count = xis_dict['count']
+
+    out_file = name + '-' + str(xis_count) + '_aligned.fasta'
     clustalomega_cline = ClustalOmegaCommandline(infile=sequences_to_align, outfile=out_file, verbose=True, auto=True)
     print(clustalomega_cline)
     stdout, stderr = clustalomega_cline()
+    print(name + '-' + str(xis_count) + ':reference gene & gene sections- alignment complete')
+
+    dic = {}
+    alignment = AlignIO.read(out_file, "fasta")
+    for i in range(1, alignment.get_alignment_length() + 1):
+        dic[i] = {}
+    seq_count = 0
+    for record in alignment:
+        seq_count += 1
+        base_count = 0
+        if seq_count == 3:
+            ref_base_count = 0
+            for base in record.seq:
+                base_count += 1
+                dic[base_count][seq_count] = base
+                if base != '-':
+                    ref_base_count += 1
+                dic[base_count]['ref_position'] = ref_base_count
+                max_ref_position = ref_base_count
+        else:
+            for base in record.seq:
+                base_count += 1
+                dic[base_count][seq_count] = base
+
+    #create a list of absolute positions of alignment where 2 gene sections match
+    equal_positions = []
+    for position in sorted(dic):
+        if dic[position][1] == dic[position][2] and dic[position][1] != '-':
+            #print(str(position) + '\t' + str(dic[position]))
+            equal_positions.append(position)
+
+    #get each string of matching sequences
+    #OPTION1
+    flag = 'match'
+    matching_dict = {}
+    mismatching_dict = {}
+    count = 1
+    start_position = equal_positions[0]
+    matching_dict[count] = {}
+    matching_dict[count]['sequence'] = []
+    matching_dict[count]['start_position'] = start_position
+    mismatching_REF = []
+    for position in range(equal_positions[0], equal_positions[-1]+1):
+        if dic[position][1] == dic[position][2]:
+            test = 'match'
+        else:
+            test = 'mismatch'
+            mismatching_REF.append(dic[position][3])
+        if test == flag:
+            if test == 'match':
+                matching_dict[count]['sequence'].append(dic[position][1])
+            else:
+                mismatching_dict['seq' + str(1) + '_' + 'stretch' + str(count)].append(dic[position][1])
+                mismatching_dict['seq' + str(2) + '_' + 'stretch' + str(count)].append(dic[position][2])
+        else:
+            if test == 'match':
+                count += 1
+                #matching_dict[count] = []
+                #matching_dict[count].append(dic[position][1])
+                matching_dict[count] = {}
+                matching_dict[count]['start_position'] = position
+                matching_dict[count]['sequence'] = []
+                matching_dict[count]['sequence'].append(dic[position][1])
+            else:
+                mismatching_dict['seq' + str(1) + '_' + 'stretch' + str(count)] = []
+                mismatching_dict['seq' + str(2) + '_' + 'stretch' + str(count)] = []
+                mismatching_dict['seq' + str(1) + '_' + 'stretch' + str(count)].append(dic[position][1])
+                mismatching_dict['seq' + str(2) + '_' + 'stretch' + str(count)].append(dic[position][2])
+            flag = test
+
+    #for each possible direct repeat, get the gene sequence before & after, compare to reference
+    uber_dict = {}
+    matching_ratios = []
+    for i in range(1,count + 1):
+        uber_dict[i] = {}
+        uber_dict[i]['direct_repeat'] = ''.join(matching_dict[i]['sequence'])
+        uber_dict[i]['start_position'] = matching_dict[i]['start_position']
+        temp_seq_list = []
+        for n in range(1, count):
+            if n < i:
+                for item in mismatching_dict['seq1_stretch' + str(n)]:
+                    temp_seq_list.append(item)
+            else:
+                for item in mismatching_dict['seq2_stretch' + str(n)]:
+                    temp_seq_list.append(item)
+        uber_dict[i]['gene_seq'] = ''.join(temp_seq_list)
+        uber_dict[i]['ref_match_ratio'] = SequenceMatcher(None, uber_dict[i]['gene_seq'], ''.join(mismatching_REF)).ratio()
+        matching_ratios.append(uber_dict[i]['ref_match_ratio'])
+
+    #pick the possible direct repeat that has the best corresponding gene match to reference
+    #NO PLAN IF 2 DIR_REPEATS HAVE MAX RATIOS & SAME LENGTH
+    second_count = 0
+    narrowed_dict = {}
+    direct_repeat_lengths = []
+    for i in range(1,count + 1):
+        if uber_dict[i]['ref_match_ratio'] == max(matching_ratios):
+            second_count += 1
+            absolute_start_position = uber_dict[i]['start_position']
+            ref_gene_start_position = dic[uber_dict[i]['start_position']]['ref_position']
+            direct_repeat = uber_dict[i]['direct_repeat']
+            direct_repeat_lengths.append(len(uber_dict[i]['direct_repeat']))
+            narrowed_dict[i] = uber_dict[i]
+    if second_count > 1:
+        for i in narrowed_dict.keys():
+            if len(narrowed_dict[i]['direct_repeat']) == max(direct_repeat_lengths):
+                absolute_start_position = narrowed_dict[i]['start_position']
+                ref_gene_start_position = dic[narrowed_dict[i]['start_position']]['ref_position']
+                direct_repeat = narrowed_dict[i]['direct_repeat']
+
+    xis_dict['direct repeat'] = direct_repeat
+    xis_dict['interruption position'] = ref_gene_start_position
+
+    '''
+    #OPTION2
+    #get the two overlapping gene sections & find the longest matching segment
+    seq_1 = []
+    seq_2 = []
+    for position in range(equal_positions[0], equal_positions[-1]+1):
+        seq_1.append(dic[position][1])
+        seq_2.append(dic[position][2])
+    length = equal_positions[-1]+1 - equal_positions[0]
+    matching = SequenceMatcher(None, ''.join(seq_1), ''.join(seq_2)).find_longest_match(0, length, 0, length)
+    start_position = matching[1] + equal_positions[0]
+    length = matching[2]
+    dir_rep_list = []
+    for position in range(start_position, start_position + length):
+        dir_rep_list.append(dic[position][1])
+    print('direct repeat:' + ''.join(dir_rep_list))
+    print('start position:' + str(start_position))
+    '''
+
+    #collect bases from each gene section before/after direct repeats to complete the gene
+    full_gene_list = []
+    for position in range(1,absolute_start_position):
+        if dic[position]['ref_position'] != 0:
+            full_gene_list.append(dic[position][1])
+    for position in range(absolute_start_position, alignment.get_alignment_length() + 1):
+        full_gene_list.append(dic[position][2])
+        if dic[position]['ref_position'] == max_ref_position:
+            break
+    full_gene = ''.join(full_gene_list)
+    full_gene_file = open(name + '-' + str(xis_count) + '_complete_gene.fna', 'w')
+    full_gene_file.write('>' + name + '-' + str(xis_count) + ' full gene sequence' + '\n' + full_gene)
+    full_gene_file.close()
+
+    print('-----------------')
+    print(args.name)
+    print(xis_dict['count'])
+    #print interrupted gene (also reference gene)
+    print(xis_dict['direct repeat'])
+    print(xis_dict['interruption position'])
+    #print xis identifier (or just contig/coordinates?)
+    print(xis_dict['class'])
+    #print xis distance to edge of element
+    #print xis location (being or end of element)
+    #print xis direction
+    #print element length
+    #print element gc
+    print(xis_dict['contig'])
+    #print element start coordinate
+    #print element end coordinate
 
     # need to print results overview to a file:
-    # genome, int gene, ref gene, int base
-    # xis direction, ser/tyr, xis at start/end of IE
-    # IE Length, direct repeat sequence
-    # xis distance to IE edge?
 
     # need output:
-    # xis sequence
-    # whole gene sequence
     # IE sequence
 
 if __name__ == '__main__':
