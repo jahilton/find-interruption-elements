@@ -4,18 +4,13 @@
 # install ncbi tools
 # pull nr db if local blasting
 # install clustal-omega (install argstable for this)
-
 # $ export PATH=$PATH:/Users/jason/code/find-interruption-elements-side/NCBI_Resources/ncbi-blast-2.4.0+/bin/ ----- how to get this permanent?
-
 # first requires the db to go through makeblastdb - can i do that here in python? (make it happen only if it isn't already made)
 # makeblastdb -in genome -dbtype nucl -parse_seqids
 # makeblastdb -in known_interrupted_genes_protein.faa -dbtype prot -parse_seqids
 # and for nr
 # add an error message so it prints out a more human-friendly message and the command required to create the blastdb
 
-# make input either 1 genome, 1 nickname OR 1 table with genomes & nicknames
-
-# could include blast options - xis_candidate_e_value, etc
 
 from Bio import Entrez
 from Bio import SeqIO
@@ -369,7 +364,7 @@ def find_interrupted_gene(name, xis_dict, xis_plus_flank):
     stdout, stderr = blastx_cline()
     print(name + '-' + str(xis_count) + ':xis w/ flank - known Interrupted Genes BLAST complete')
 
-    hitsdW = {} #CAN I DITCH MOST OF WHAT GOES IN HERE?
+    strand = {} #CAN I DITCH MOST OF WHAT GOES IN HERE?
     sortme = {}
     off_limits_range = []
 
@@ -383,15 +378,15 @@ def find_interrupted_gene(name, xis_dict, xis_plus_flank):
                 middle_of_hit = round((hsp.query_start+hsp.query_end)/2, 0)
                 if middle_of_hit not in off_limits_range and hsp.query_start not in off_limits_range and hsp.query_end not in off_limits_range and distance_from_edge > 15:
                     sortme[alignment.accession] = round(hsp.align_length/alignment.length*100, 2)
-                    hitsdW[alignment.accession] = {}
-                    hitsdW[alignment.accession]['title'] = alignment.hit_def
-                    hitsdW[alignment.accession]['start'] = hsp.query_start
-                    hitsdW[alignment.accession]['end'] = hsp.query_end
-                    hitsdW[alignment.accession]['cover'] = round(hsp.align_length/alignment.length*100, 2)
+                    #hitsdW[alignment.accession] = {}
+                    #hitsdW[alignment.accession]['title'] = alignment.hit_def
+                    #hitsdW[alignment.accession]['start'] = hsp.query_start
+                    #hitsdW[alignment.accession]['end'] = hsp.query_end
+                    #hitsdW[alignment.accession]['cover'] = round(hsp.align_length/alignment.length*100, 2)
                     if (hsp.frame[0] < 0 and hsp.frame[1] < 0) or (hsp.frame[0] > -1 and hsp.frame[1] > -1):
-                        hitsdW[alignment.accession]['strand'] = 'plus'
+                        strand[alignment.accession] = 'plus'
                     else:
-                        hitsdW[alignment.accession]['strand'] = 'minus'
+                        strand[alignment.accession] = 'minus'
                     for i in range(hsp.query_start, hsp.query_end):
                         off_limits_range.append(i)
     blast_results.close()
@@ -420,15 +415,15 @@ def find_interrupted_gene(name, xis_dict, xis_plus_flank):
                     middle_of_hit = round((hsp.query_start+hsp.query_end)/2, 0)
                     if middle_of_hit not in off_limits_range and hsp.query_start not in off_limits_range and hsp.query_end not in off_limits_range and distance_from_edge > 15:
                         sortme[alignment.accession] = round(hsp.align_length/alignment.length*100, 2)
-                        hitsdW[alignment.accession] = {}
-                        hitsdW[alignment.accession]['title'] = alignment.hit_def
-                        hitsdW[alignment.accession]['start'] = hsp.query_start
-                        hitsdW[alignment.accession]['end'] = hsp.query_end
-                        hitsdW[alignment.accession]['cover'] = round(hsp.align_length/alignment.length*100, 2)
+                        #hitsdW[alignment.accession] = {}
+                        #hitsdW[alignment.accession]['title'] = alignment.hit_def
+                        #hitsdW[alignment.accession]['start'] = hsp.query_start
+                        #hitsdW[alignment.accession]['end'] = hsp.query_end
+                        #hitsdW[alignment.accession]['cover'] = round(hsp.align_length/alignment.length*100, 2)
                         if (hsp.frame[0] < 0 and hsp.frame[1] < 0) or (hsp.frame[0] > -1 and hsp.frame[1] > -1):
-                            hitsdW[alignment.accession]['strand'] = 'plus'
+                            strand[alignment.accession] = 'plus'
                         else:
-                            hitsdW[alignment.accession]['strand'] = 'minus'
+                            strand[alignment.accession] = 'minus'
                         for i in range(hsp.query_start, hsp.query_end):
                             off_limits_range.append(i)
         blast_results.close()
@@ -473,7 +468,7 @@ def find_interrupted_gene(name, xis_dict, xis_plus_flank):
         reference_gene_dna_file.write(sequence_cutter(open('interrupted_genes/known_interrupted_genes_protein.fna', 'r'), lowest_coverage_accession, 'all'))
         reference_gene_dna_file.close()
 
-    xis_dict['proximal_gene_orientation'] = hitsdW[lowest_coverage_accession]['strand']
+    xis_dict['proximal_gene_orientation'] = strand[lowest_coverage_accession]
 
     if xis_dict['proximal_gene_orientation'] == xis_dict['xis_orientation_on_contig']:
         xis_dict['xis orientation'] = 'plus'
