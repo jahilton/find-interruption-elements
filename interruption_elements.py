@@ -1,4 +1,5 @@
-#NEED TO CHECK SEQUENCE OUTPUT FILES AGAINST ACTUAL RESULTS
+#NEED TO CHECK ELEMENT SEQUENCE OUTPUT FILE AGAINST ACTUAL RESULTS
+#I THINK COMPLETED GENE HAS 3 TOO MANY BP AT FRONT & 3 TOO MANY BP AT END
 
 # install ncbi tools
 # pull nr db if local blasting
@@ -194,13 +195,13 @@ def find_xis_candidates(name):
     '''
 
     # BLAST xis protein gene sequences into genome
-    tblastn_cline = NcbitblastnCommandline(query=args.xis_set, db=args.genome, evalue=1e-20, outfmt=5, out=name + 'xis_tn_genome.xml')
+    tblastn_cline = NcbitblastnCommandline(query=args.xis_set, db=args.genome, evalue=1e-20, outfmt=5, out=name + '_xis_tn_genome.xml')
     print(str(tblastn_cline))
     stdout, stderr = tblastn_cline()
     print(name + ':xis_set-genome BLAST complete')
 
     # from BLAST results, pull hits
-    blast_results = open(name + 'xis_tn_genome.xml', 'r')
+    blast_results = open(name + '_xis_tn_genome.xml', 'r')
     blast_records = NCBIXML.parse(blast_results)
     xis_hits_dict = {}
     count = 0
@@ -219,6 +220,10 @@ def find_xis_candidates(name):
                     xis_hits_dict['hit' + str(count)]['start'] = hsp.sbjct_start
                     xis_hits_dict['hit' + str(count)]['end'] = hsp.sbjct_end
                     xis_hits_dict['hit' + str(count)]['top_xis_hit'] = blast_record.query
+                    if (hsp.frame[0] < 0 and hsp.frame[1] < 0) or (hsp.frame[0] > -1 and hsp.frame[1] > -1):
+                        xis_hits_dict['hit' + str(count)]['strand'] = 'plus'
+                    else:
+                        xis_hits_dict['hit' + str(count)]['strand'] = 'minus'
                     for i in range(hsp.query_start, hsp.query_end):
                         off_limits_ranges[alignment.title].append(i)
     blast_results.close()
@@ -251,6 +256,7 @@ def find_xis_candidates(name):
         xis_dict['contig'] = hit['title']
         xis_dict['contig accession'] = hit['accession']
         xis_dict['class'] = recombinase_class[hit['top_xis_hit']]
+        xis_dict['xis_orientation_on_contig'] = hit['strand']
         
         # cut the xis_candidates and flanking regions from the contigs based on BLAST results
         contig_sequence_length = len(contig_sequence)
@@ -311,13 +317,13 @@ def sequence_cutter(genome, sequence_id, cut_coordinates='all', header='TRUE'):
                 return(header_line + '\n' + ''.join(sequence[:]))
             else:
                 start, stop = cut_coordinates
-                return(header_line + ':' + str(cut_coordinates[0]) + ':' + str(cut_coordinates[1]) + '\n' + ''.join(sequence[start:stop + 1]))
+                return(header_line + ':' + str(cut_coordinates[0]) + ':' + str(cut_coordinates[1]) + '\n' + ''.join(sequence[start - 1:stop]))
         elif header == 'FALSE':
             if cut_coordinates == 'all':
                 return(''.join(sequence[:]))
             else:
                 start, stop = cut_coordinates
-                return(''.join(sequence[start:stop + 1]))
+                return(''.join(sequence[start - 1:stop]))
     else:
         print('sequence name not unique')
 
@@ -333,12 +339,12 @@ def orf_finder(contig_sequence, blast_hit_start, blast_hit_end):
     # do i need to switch things up if the frame is negative?
     start_codon = 'ATG'
     start_flag = 'FALSE'
-    start_position = blast_hit_start
+    start_position = blast_hit_start - 1
     while start_flag == 'FALSE':
         codon_to_check = contig_sequence[start_position:start_position+3]
         if codon_to_check == start_codon:
             start_flag = 'TRUE'
-            orf_start_position = start_position
+            orf_start_position = start_position + 1
         start_position -= 3
 
     stop_codons = ['TAA', 'TAG', 'TGA']
@@ -348,7 +354,7 @@ def orf_finder(contig_sequence, blast_hit_start, blast_hit_end):
         codon_to_check = contig_sequence[stop_position:stop_position+3]
         if codon_to_check in stop_codons:
             stop_flag = 'TRUE'
-            orf_stop_position = stop_position + 2
+            orf_stop_position = stop_position + 3
         stop_position += 3
 
     return orf_start_position, orf_stop_position
@@ -363,7 +369,7 @@ def find_interrupted_gene(name, xis_dict, xis_plus_flank):
     stdout, stderr = blastx_cline()
     print(name + '-' + str(xis_count) + ':xis w/ flank - known Interrupted Genes BLAST complete')
 
-    hitsdW = {}
+    hitsdW = {} #CAN I DITCH MOST OF WHAT GOES IN HERE?
     sortme = {}
     off_limits_range = []
 
@@ -382,6 +388,10 @@ def find_interrupted_gene(name, xis_dict, xis_plus_flank):
                     hitsdW[alignment.accession]['start'] = hsp.query_start
                     hitsdW[alignment.accession]['end'] = hsp.query_end
                     hitsdW[alignment.accession]['cover'] = round(hsp.align_length/alignment.length*100, 2)
+                    if (hsp.frame[0] < 0 and hsp.frame[1] < 0) or (hsp.frame[0] > -1 and hsp.frame[1] > -1):
+                        hitsdW[alignment.accession]['strand'] = 'plus'
+                    else:
+                        hitsdW[alignment.accession]['strand'] = 'minus'
                     for i in range(hsp.query_start, hsp.query_end):
                         off_limits_range.append(i)
     blast_results.close()
@@ -415,6 +425,10 @@ def find_interrupted_gene(name, xis_dict, xis_plus_flank):
                         hitsdW[alignment.accession]['start'] = hsp.query_start
                         hitsdW[alignment.accession]['end'] = hsp.query_end
                         hitsdW[alignment.accession]['cover'] = round(hsp.align_length/alignment.length*100, 2)
+                        if (hsp.frame[0] < 0 and hsp.frame[1] < 0) or (hsp.frame[0] > -1 and hsp.frame[1] > -1):
+                            hitsdW[alignment.accession]['strand'] = 'plus'
+                        else:
+                            hitsdW[alignment.accession]['strand'] = 'minus'
                         for i in range(hsp.query_start, hsp.query_end):
                             off_limits_range.append(i)
         blast_results.close()
@@ -459,6 +473,13 @@ def find_interrupted_gene(name, xis_dict, xis_plus_flank):
         reference_gene_dna_file.write(sequence_cutter(open('interrupted_genes/known_interrupted_genes_protein.fna', 'r'), lowest_coverage_accession, 'all'))
         reference_gene_dna_file.close()
 
+    xis_dict['proximal_gene_orientation'] = hitsdW[lowest_coverage_accession]['strand']
+
+    if xis_dict['proximal_gene_orientation'] == xis_dict['xis_orientation_on_contig']:
+        xis_dict['xis orientation'] = 'plus'
+    else:
+        xis_dict['xis orientation'] = 'minus'
+
     if lowest_coverage_accession in reference_genes.keys():
         xis_dict['reference gene'] = reference_genes[lowest_coverage_accession]
         print(name + '-' + str(xis_count) + ':reference gene identified: ' + reference_genes[lowest_coverage_accession])
@@ -493,6 +514,10 @@ def find_all_gene_regions(name, xis_dict, reference_gene_aa, reference_gene_dna)
             hitsd['hit' + str(count)]['contig_title'] = alignment.title
             hitsd['hit' + str(count)]['contig_start'] = hsp.sbjct_start
             hitsd['hit' + str(count)]['contig_end'] = hsp.sbjct_end
+            if (hsp.frame[0] < 0 and hsp.frame[1] < 0) or (hsp.frame[0] > -1 and hsp.frame[1] > -1):
+                hitsd['hit' + str(count)]['strand'] = 'plus'
+            else:
+                hitsd['hit' + str(count)]['strand'] = 'minus'
             if hsp.sbjct_start < xis_coordinates[0]:
                 hitsd['hit' + str(count)]['gene_location'] = 'before'
             else:
@@ -546,6 +571,8 @@ def find_all_gene_regions(name, xis_dict, reference_gene_aa, reference_gene_dna)
         for hit in quick_dict.keys():
             if quick_dict[hit]['dist_from_xis'] == min(dist_from_xis_list):
                 second_gene_section = hit
+
+    xis_dict['distal_gene_orientation'] = hitsd[second_gene_section]['strand']
 
     # CHANGE - do we want to adjust this in some way so that we capture the completed gene? do we need to rope ORF finder back in???
     # write the two gene regions to a file for alignment
@@ -698,8 +725,7 @@ def align_gene_sections(name, xis_dict, sequences_to_align):
 
     xis_dict['direct repeat'] = direct_repeat
     xis_dict['interruption position'] = ref_gene_start_position
-    xis_dict['element start position'] = element_start_positon
-    xis_dict['element end position'] = element_end_positon
+    xis_dict['element coordinates'] = (element_start_positon, element_end_positon)
     xis_dict['element length'] = element_end_positon - element_start_positon + 1
 
     start_to_start = abs(element_start_positon - xis_dict['xis coordinates'][0])
@@ -719,7 +745,7 @@ def align_gene_sections(name, xis_dict, sequences_to_align):
 
     genome = open(args.genome, 'r')
     sequence = sequence_cutter(genome, xis_dict['contig accession'], element_cut_coordinates, 'FALSE')
-    xis_dict['element GC'] = (sequence.count('G') + sequence.count('C'))/len(sequence)
+    xis_dict['element GC'] = round(((sequence.count('G') + sequence.count('C'))/len(sequence))*100,2)
     genome.close()
 
     '''
@@ -762,17 +788,16 @@ def align_gene_sections(name, xis_dict, sequences_to_align):
     print(xis_dict['direct repeat'])
     print(xis_dict['interruption position'])
     print(xis_dict['class'])
-    print(xis_dict['xis coordinates'][0]) #NEED TO CHECK THE XIS START
-    print(xis_dict['xis coordinates'][1]) #NEED TO CHECK THE XIS END
-    print(xis_dict['xis to edge']) # THIS IS OFF, NEED TO CHECK THE XIS COORDINATES VS WHAT I FOUND IN PUB.
+    print(xis_dict['xis coordinates'][0])
+    print(xis_dict['xis coordinates'][1])
+    print(xis_dict['xis to edge'])
     print(xis_dict['xis location'])
-    #print xis direction
+    print(xis_dict['xis orientation'])
     print(xis_dict['element length'])
-    print(xis_dict['element GC']) # THIS IS OFF, NEED TO CHECK ELEMENT SEQUENCE
+    print(xis_dict['element GC'])
     print(xis_dict['contig accession'])
-    print(xis_dict['element start position'])
-    print(xis_dict['element end position'])
-
+    print(xis_dict['element coordinates'][0])
+    print(xis_dict['element coordinates'][1])
     # need to print results overview to a file:
 
     # ADD TO PRINTED UPDATES 'COMPLETE' OR SOMETHING
