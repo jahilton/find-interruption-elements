@@ -1,5 +1,7 @@
-#NEED TO CHECK ELEMENT SEQUENCE OUTPUT FILE AGAINST ACTUAL RESULTS
-#I THINK COMPLETED GENE HAS 3 TOO MANY BP AT FRONT & 3 TOO MANY BP AT END
+# I THINK COMPLETED GENE HAS 3 TOO MANY BP AT FRONT - BUT THAT IS HOW IT IS ALIGNED
+# MAYBE INCLUDE REFERENCE GENE IN THE HEADER OF THE COMPLETED GENE
+# NEED TO FIGURE OUT WHAT IS GOING ON IN ALIGNMENT ETC WITH XIS GENES THAT ARENT ON INT ELE & HOW THEY ARE REPORTED
+# I THINK THE INITIAL XIS BLAST RESULTS ARENT BEING PARSED IN ORDER
 
 # install ncbi tools
 # pull nr db if local blasting
@@ -10,6 +12,12 @@
 # makeblastdb -in known_interrupted_genes_protein.faa -dbtype prot -parse_seqids
 # and for nr
 # add an error message so it prints out a more human-friendly message and the command required to create the blastdb
+# how to get concat_cyano.genes.fna/faa (AND NEED TO CHANGE THAT NAME, maybe UDPATE DB)
+# Pulled all IMG JGI cyano genome assemblies, got the IMG_nnnnn ID (https://img.jgi.doe.gov/cgi-bin/w/main.cgi)
+# Crossed that with all available downloadable projects at https://genome.jgi.doe.gov/portal/
+# curl 'https://genome.jgi.doe.gov/portal/IMG_2675903261/download/download_bundle.tar.gz' -b cookies > download_2675903261.tar.gz ; gunzip download_2675903261.tar.gz ; tar -xvf download_2675903261.tar ; mv 2675903261/2675903261.genes* cyano_genes/ ; rm -r 2675903261/ ; rm download_2675903261.tar
+# above command for 754 projects: downloads tar bundle, unzips it, extracts the genes faa & fna file, deletes the rest
+# then i concatenated 754 fna files to 1 file & 754 faa files to 1 file
 
 
 from Bio import Entrez
@@ -26,7 +34,6 @@ EPILOG = '''
     Write something here maybe
     '''
 
-# CHANGE - need to align read headers in full_xis_set.faa w/ these keys
 recombinase_class = {
     '131C_1156': 'tyrosine',
     '131C_1121': 'tyrosine',
@@ -108,7 +115,7 @@ recombinase_class = {
     'Nos7524_1209': 'tyrosine',
     'Nos7524_1231': 'tyrosine',
     'RINTHH_3080': 'serine',
-    'RintRC_2216': 'tyrosine',
+    'Ga0055315_143016': 'tyrosine',
     'Riv7116_6196': 'serine',
     'Riv7116_6219': 'serine',
     'Riv7116_6354': 'serine',
@@ -131,30 +138,30 @@ recombinase_class = {
 }
 
 reference_genes = {
-    '646565097': 'transposase (Ava_B0242)',
-    '648049578': 'nifE',
-    '648049580': 'nifK',
-    '648049581': 'nifD',
-    '648049582': 'nifH',
-    '648049585': 'fdxN',
-    '648049586': 'NifB',
-    '648050508': 'coxA',
-    '648050542': 'integrase family protein (Aazo_2682)',
-    '648051374': 'hupL',
-    '648051375': 'hupS',
-    '648051418': 'hglE',
-    '648051575': 'flv3B',
-    '648052264': 'NADPH-dependent FMN reductase (Aazo_5221)',
-    '2505798824': 'phospholipase D/transphosphatidylase (Cal7507_0570)',
-    '2505803755': 'nifJ',
-    '2505803979': 'FAD-dependent oxidoreductase (Cal7507_5656)',
-    '2506492697': 'primase P4 (Ana7108_2845)',
-    '2507085412': 'ATP-dependent DNA helicase (Pse6802_0098)',
-    '2507088806': 'predicted integral membrane protein (Pse6802_3453)',
-    '2507477837': 'caspase domain-containing protein (Cal7103DRAFT_00047390)',
-    '2509768028': 'hypothetical protein (CylstDRAFT_1988)',
-    '2509784323': 'arabinose efflux permease (Mic7126DRAFT_5075)',
-    '2517243815': 'transposase (ISSoc8) (Mas10914DRAFT_5058)'
+    'Ava_B0242': 'transposase (Ava_B0242)',
+    'Aazo_1350': 'nifE',
+    'Aazo_1352': 'nifK',
+    'Aazo_1353': 'nifD',
+    'Aazo_1354': 'nifH',
+    'Aazo_1357': 'fdxN',
+    'Aazo_1358': 'NifB',
+    'Aazo_2640': 'coxA',
+    'Aazo_2682': 'integrase family protein (Aazo_2682)',
+    'Aazo_3865': 'hupL',
+    'Aazo_3866': 'hupS',
+    'Aazo_3917': 'hglE',
+    'Aazo_4140': 'flv3B',
+    'Aazo_5221': 'NADPH-dependent FMN reductase (Aazo_5221)',
+    'Cal7507_0570': 'phospholipase D/transphosphatidylase (Cal7507_0570)',
+    'Cal7507_5433': 'nifJ',
+    'Cal7507_5656': 'FAD-dependent oxidoreductase (Cal7507_5656)',
+    'Ana7108_2845': 'primase P4 (Ana7108_2845)',
+    'Pse6802_0098': 'ATP-dependent DNA helicase (Pse6802_0098)',
+    'Pse6802_3453': 'predicted integral membrane protein (Pse6802_3453)',
+    'Cal7103DRAFT_00047390': 'caspase domain-containing protein (Cal7103DRAFT_00047390)',
+    'CylstDRAFT_1988': 'hypothetical protein (CylstDRAFT_1988)',
+    'Mic7126DRAFT_5075': 'arabinose efflux permease (Mic7126DRAFT_5075)',
+    'Mas10914DRAFT_5058': 'transposase (ISSoc8) (Mas10914DRAFT_5058)'
 }
 
 
@@ -203,28 +210,28 @@ def find_xis_candidates(name):
     off_limits_ranges = {}
     for blast_record in blast_records:
         for alignment in blast_record.alignments:
-            if alignment.title not in off_limits_ranges.keys():
-                off_limits_ranges[alignment.title] = []
+            if alignment.accession not in off_limits_ranges.keys():
+                off_limits_ranges[alignment.accession] = []
             for hsp in alignment.hsps:
                 middle_of_hit = round((hsp.query_start+hsp.query_end)/2, 0)
-                if middle_of_hit not in off_limits_ranges[alignment.title]:
+                if middle_of_hit not in off_limits_ranges[alignment.accession]:
                     count += 1
                     xis_hits_dict['hit' + str(count)] = {}
-                    xis_hits_dict['hit' + str(count)]['title'] = alignment.title
                     xis_hits_dict['hit' + str(count)]['accession'] = alignment.accession
                     xis_hits_dict['hit' + str(count)]['start'] = hsp.sbjct_start
                     xis_hits_dict['hit' + str(count)]['end'] = hsp.sbjct_end
+                    xis_hits_dict['hit' + str(count)]['evalue'] = hsp.expect
                     xis_hits_dict['hit' + str(count)]['top_xis_hit'] = blast_record.query
                     if (hsp.frame[0] < 0 and hsp.frame[1] < 0) or (hsp.frame[0] > -1 and hsp.frame[1] > -1):
                         xis_hits_dict['hit' + str(count)]['strand'] = 'plus'
                     else:
                         xis_hits_dict['hit' + str(count)]['strand'] = 'minus'
                     for i in range(hsp.query_start, hsp.query_end):
-                        off_limits_ranges[alignment.title].append(i)
+                        off_limits_ranges[alignment.accession].append(i)
     blast_results.close()
     print(name + ':' + str(count) + ' xis candidates identified')
 
-    # if no hits were found, then quite the program
+    # if no hits were found, then quit the program
     if count == 0:
         return
 
@@ -234,7 +241,7 @@ def find_xis_candidates(name):
         xis_count += 1
         xis_flank = open(name + '-' + str(xis_count) + '_xis_flank.fna', 'w')
         xis_candidate_sequence = open(name + '-' + str(xis_count) + '_xis_candidate.fna', 'w')
-        contig_title = hit['title']
+        contig_title = hit['accession']
         genome = open(args.genome, 'r')
         contig_sequence = sequence_cutter(genome, contig_title, 'all', 'FALSE')
         xis_coordinates = orf_finder(contig_sequence, hit['start'], hit['end'])
@@ -244,15 +251,18 @@ def find_xis_candidates(name):
         xis_candidate_sequence.write(xis_fasta + '\n')
         genome.close()
 
-        # log characteristics of the xis candidate to be used in later processing
+        # log characteristics of the xis candidate to be used in later processing and reporting
         xis_dict = {}
+        xis_dict['name'] = name
         xis_dict['xis coordinates'] = xis_coordinates
         xis_dict['count'] = xis_count
-        xis_dict['contig'] = hit['title']
         xis_dict['contig accession'] = hit['accession']
-        xis_dict['class'] = recombinase_class[hit['top_xis_hit']]
+        locus_tag = hit['top_xis_hit'].split()[1]
+        xis_dict['top_xis_hit'] = locus_tag
+        xis_dict['class'] = recombinase_class[locus_tag]
         xis_dict['xis_orientation_on_contig'] = hit['strand']
-        
+        xis_dict['evalue_to_known_xis'] = hit['evalue']
+
         # cut the xis_candidates and flanking regions from the contigs based on BLAST results
         contig_sequence_length = len(contig_sequence)
         xis_start = xis_coordinates[0]
@@ -277,7 +287,7 @@ def find_xis_candidates(name):
         xis_candidate_sequence.close()
 
         # pass on the xis_candidates and flanking regions to search for interrupted genes in the flanking regions
-        find_interrupted_gene(name, xis_dict, name + '-' + str(xis_count) + '_xis_flank.fna')
+        find_interrupted_gene(xis_dict, name + '-' + str(xis_count) + '_xis_flank.fna')
 
 
 def sequence_cutter(genome, sequence_id, cut_coordinates='all', header='TRUE'):
@@ -322,6 +332,7 @@ def sequence_cutter(genome, sequence_id, cut_coordinates='all', header='TRUE'):
     else:
         print('sequence name not unique')
 
+
 def orf_finder(contig_sequence, blast_hit_start, blast_hit_end):
     '''
     Given a sequence and the start and stop of a BLAST hit, returns the ORF that the sequence range is a part of.
@@ -331,7 +342,7 @@ def orf_finder(contig_sequence, blast_hit_start, blast_hit_end):
     Returns the predicted ORF sequence.
     '''
 
-    # do i need to switch things up if the frame is negative?
+    # HOW DOES THIS WORK IF FRAME IS NEGATIVE?
     start_codon = 'ATG'
     start_flag = 'FALSE'
     start_position = blast_hit_start - 1
@@ -355,8 +366,9 @@ def orf_finder(contig_sequence, blast_hit_start, blast_hit_end):
     return orf_start_position, orf_stop_position
 
 
-def find_interrupted_gene(name, xis_dict, xis_plus_flank):
+def find_interrupted_gene(xis_dict, xis_plus_flank):
     xis_count = xis_dict['count']
+    name = xis_dict['name']
 
     # BLAST the xis + flanking region against the known reference genes for previously found interrupted genes
     blastx_cline = NcbiblastxCommandline(query=xis_plus_flank, db='interrupted_genes/known_interrupted_genes_protein.faa', culling_limit=15, evalue=1e-15, outfmt=5, out=name + '-' + str(xis_count) + '_xisflank_x_KnownIntGenes.xml')
@@ -364,9 +376,10 @@ def find_interrupted_gene(name, xis_dict, xis_plus_flank):
     stdout, stderr = blastx_cline()
     print(name + '-' + str(xis_count) + ':xis w/ flank - known Interrupted Genes BLAST complete')
 
-    strand = {} #CAN I DITCH MOST OF WHAT GOES IN HERE?
+    strand = {}
     sortme = {}
     off_limits_range = []
+    xis_locus_tag = {}
 
     blast_results = open(name + '-' + str(xis_count) + '_xisflank_x_KnownIntGenes.xml', 'r')
     blast_records = NCBIXML.parse(blast_results)
@@ -378,11 +391,12 @@ def find_interrupted_gene(name, xis_dict, xis_plus_flank):
                 middle_of_hit = round((hsp.query_start+hsp.query_end)/2, 0)
                 if middle_of_hit not in off_limits_range and hsp.query_start not in off_limits_range and hsp.query_end not in off_limits_range and distance_from_edge > 15:
                     sortme[alignment.accession] = round(hsp.align_length/alignment.length*100, 2)
-                    #hitsdW[alignment.accession] = {}
-                    #hitsdW[alignment.accession]['title'] = alignment.hit_def
-                    #hitsdW[alignment.accession]['start'] = hsp.query_start
-                    #hitsdW[alignment.accession]['end'] = hsp.query_end
-                    #hitsdW[alignment.accession]['cover'] = round(hsp.align_length/alignment.length*100, 2)
+                    # hitsdW[alignment.accession] = {}
+                    # hitsdW[alignment.accession]['title'] = alignment.hit_def
+                    xis_locus_tag[alignment.accession] = alignment.hit_def.split()[0]
+                    # hitsdW[alignment.accession]['start'] = hsp.query_start
+                    # hitsdW[alignment.accession]['end'] = hsp.query_end
+                    # hitsdW[alignment.accession]['cover'] = round(hsp.align_length/alignment.length*100, 2)
                     if (hsp.frame[0] < 0 and hsp.frame[1] < 0) or (hsp.frame[0] > -1 and hsp.frame[1] > -1):
                         strand[alignment.accession] = 'plus'
                     else:
@@ -390,12 +404,9 @@ def find_interrupted_gene(name, xis_dict, xis_plus_flank):
                     for i in range(hsp.query_start, hsp.query_end):
                         off_limits_range.append(i)
     blast_results.close()
-  
+
     # if interrupted gene isn't a previously known gene, BLAST against a larger protein database
-    if sortme == {}: # and some other criteria about the BLAST results?
-        # for web blast, use...
-        if args.protein_set == 'web':
-            blastx_cline = NcbiblastxCommandline(remote='remote', query='xis_flank.fasta', db='refseq_protein', culling_limit=15, evalue=0.00000000000001, outfmt=5, out='xisflank_x_refseqprot.xml')
+    if sortme == {}:  # AND SOME OTHER CRITERIA ABOUT THE BLAST RESULTS?
         # for local blast against a protein db, use...
         else:
             blastx_cline = NcbiblastxCommandline(query=xis_plus_flank, db=args.protein_set, culling_limit=15, evalue=1e-15, outfmt=5, out=name + '-' + str(xis_count) + '_xisflank_x_nr.xml')
@@ -405,7 +416,6 @@ def find_interrupted_gene(name, xis_dict, xis_plus_flank):
         # pull the best BLAST hit per region
         blast_results = open(name + '-' + str(xis_count) + '_xisflank_x_nr.xml', 'r')
         blast_records = NCBIXML.parse(blast_results)
-        
 
         for blast_record in blast_records:
             for alignment in blast_record.alignments:
@@ -415,11 +425,11 @@ def find_interrupted_gene(name, xis_dict, xis_plus_flank):
                     middle_of_hit = round((hsp.query_start+hsp.query_end)/2, 0)
                     if middle_of_hit not in off_limits_range and hsp.query_start not in off_limits_range and hsp.query_end not in off_limits_range and distance_from_edge > 15:
                         sortme[alignment.accession] = round(hsp.align_length/alignment.length*100, 2)
-                        #hitsdW[alignment.accession] = {}
-                        #hitsdW[alignment.accession]['title'] = alignment.hit_def
-                        #hitsdW[alignment.accession]['start'] = hsp.query_start
-                        #hitsdW[alignment.accession]['end'] = hsp.query_end
-                        #hitsdW[alignment.accession]['cover'] = round(hsp.align_length/alignment.length*100, 2)
+                        # hitsdW[alignment.accession] = {}
+                        # hitsdW[alignment.accession]['title'] = alignment.hit_def
+                        # hitsdW[alignment.accession]['start'] = hsp.query_start
+                        # hitsdW[alignment.accession]['end'] = hsp.query_end
+                        # hitsdW[alignment.accession]['cover'] = round(hsp.align_length/alignment.length*100, 2)
                         if (hsp.frame[0] < 0 and hsp.frame[1] < 0) or (hsp.frame[0] > -1 and hsp.frame[1] > -1):
                             strand[alignment.accession] = 'plus'
                         else:
@@ -439,19 +449,17 @@ def find_interrupted_gene(name, xis_dict, xis_plus_flank):
                 lowest_coverage_accession = key
 
         # use the accession of the hit to pull the full gene sequence
-        # CHANGE - need protein sequence to id contig regions, but nucleotide sequence to align
-        Entrez.email = "A.N.Other@example.com"
-        handle = Entrez.efetch(db="nucleotide", rettype="fasta", retmode="text", id=lowest_coverage_accession)
-        seq_record = SeqIO.read(handle, "fasta")
-        handle.close()
-
         reference_gene_aa_file = open(name + '-' + str(xis_count) + '_reference_gene.faa', 'w')
-        reference_gene_aa_file.write(">" + str(seq_record.id) + '\n' + str(seq_record.seq))
+        reference_gene_aa_file.write(sequence_cutter(open('/Users/jason/code/find-interruption-elements-side/cyano_genes/concat_cyano_genes.faa', 'r'), lowest_coverage_accession, 'all'))
         reference_gene_aa_file.close()
 
         reference_gene_dna_file = open(name + '-' + str(xis_count) + '_reference_gene.fna', 'w')
-        reference_gene_dna_file.write(">" + str(seq_record.id) + '\n' + str(seq_record.seq))
+        reference_gene_dna_file.write(sequence_cutter(open('/Users/jason/code/find-interruption-elements-side/cyano_genes/concat_cyano_genes.fna', 'r'), lowest_coverage_accession, 'all'))
         reference_gene_dna_file.close()
+
+        # try this
+        xis_dict['reference gene'] = lowest_coverage_accession
+        print(name + '-' + str(xis_count) + ':reference gene identified: ' + lowest_coverage_accession)
 
     # if a previously known interrutped gene was found in the flanking regions, pull the DNA sequence of that gene
     else:
@@ -468,6 +476,10 @@ def find_interrupted_gene(name, xis_dict, xis_plus_flank):
         reference_gene_dna_file.write(sequence_cutter(open('interrupted_genes/known_interrupted_genes_protein.fna', 'r'), lowest_coverage_accession, 'all'))
         reference_gene_dna_file.close()
 
+        # try this
+        xis_dict['reference gene'] = reference_genes[xis_locus_tag[lowest_coverage_accession]]
+        print(name + '-' + str(xis_count) + ':reference gene identified: ' + reference_genes[xis_locus_tag[lowest_coverage_accession]])
+
     xis_dict['proximal_gene_orientation'] = strand[lowest_coverage_accession]
 
     if xis_dict['proximal_gene_orientation'] == xis_dict['xis_orientation_on_contig']:
@@ -475,21 +487,22 @@ def find_interrupted_gene(name, xis_dict, xis_plus_flank):
     else:
         xis_dict['xis orientation'] = 'minus'
 
-    if lowest_coverage_accession in reference_genes.keys():
-        xis_dict['reference gene'] = reference_genes[lowest_coverage_accession]
-        print(name + '-' + str(xis_count) + ':reference gene identified: ' + reference_genes[lowest_coverage_accession])
-    else:
-        xis_dict['reference gene'] = lowest_coverage_accession
-        print(name + '-' + str(xis_count) + ':reference gene identified: ' + lowest_coverage_accession)
-    
+    # if xis_locus_tag[lowest_coverage_accession] in reference_genes.keys():
+        # xis_dict['reference gene'] = reference_genes[xis_locus_tag[lowest_coverage_accession]]
+        # print(name + '-' + str(xis_count) + ':reference gene identified: ' + reference_genes[xis_locus_tag[lowest_coverage_accession]])
+    # else:
+        # xis_dict['reference gene'] = lowest_coverage_accession
+        # print(name + '-' + str(xis_count) + ':reference gene identified: ' + lowest_coverage_accession)
+
     # pass on the reference gene to search the whole genome for all gene regions
-    find_all_gene_regions(name, xis_dict, name + '-' + str(xis_count) + '_reference_gene.faa', name + '-' + str(xis_count) + '_reference_gene.fna')
+    find_all_gene_regions(xis_dict, name + '-' + str(xis_count) + '_reference_gene.faa', name + '-' + str(xis_count) + '_reference_gene.fna')
 
 
-def find_all_gene_regions(name, xis_dict, reference_gene_aa, reference_gene_dna):
+def find_all_gene_regions(xis_dict, reference_gene_aa, reference_gene_dna):
+    name = xis_dict['name']
     xis_count = xis_dict['count']
     xis_coordinates = xis_dict['xis coordinates']
-    xis_contig = xis_dict['contig']
+    xis_contig = xis_dict['contig accession']
 
     # BLAST reference genes into genome
     tblastn_cline = NcbitblastnCommandline(query=reference_gene_aa, db=args.genome, evalue=1e-10, outfmt=5, out=name + '-' + str(xis_count) + "_referencegene_tn_genome.xml")
@@ -506,7 +519,7 @@ def find_all_gene_regions(name, xis_dict, reference_gene_aa, reference_gene_dna)
         for hsp in alignment.hsps:
             count += 1
             hitsd['hit' + str(count)] = {}
-            hitsd['hit' + str(count)]['contig_title'] = alignment.title
+            hitsd['hit' + str(count)]['contig_title'] = alignment.accession
             hitsd['hit' + str(count)]['contig_start'] = hsp.sbjct_start
             hitsd['hit' + str(count)]['contig_end'] = hsp.sbjct_end
             if (hsp.frame[0] < 0 and hsp.frame[1] < 0) or (hsp.frame[0] > -1 and hsp.frame[1] > -1):
@@ -532,27 +545,27 @@ def find_all_gene_regions(name, xis_dict, reference_gene_aa, reference_gene_dna)
         if hitsd[hit]['contig_title'] == xis_contig:
             quick_dict[hit] = {}
             dist_from_xis = min(abs(hitsd[hit]['contig_start'] - xis_coordinates[0]),
-                    abs(hitsd[hit]['contig_start'] - xis_coordinates[1]),
-                    abs(hitsd[hit]['contig_end'] - xis_coordinates[0]),
-                    abs(hitsd[hit]['contig_end'] - xis_coordinates[1])
-                    )
+                                abs(hitsd[hit]['contig_start'] - xis_coordinates[1]),
+                                abs(hitsd[hit]['contig_end'] - xis_coordinates[0]),
+                                abs(hitsd[hit]['contig_end'] - xis_coordinates[1])
+                                )
             dist_from_xis_list.append(dist_from_xis)
             quick_dict[hit]['dist_from_xis'] = dist_from_xis
     for hit in quick_dict.keys():
         if quick_dict[hit]['dist_from_xis'] == min(dist_from_xis_list):
             nearest_gene_section = hit
 
-    # determine the gene region that is on the other side of the xis candidate gene (relative to the above gene region) 
+    # determine the gene region that is on the other side of the xis candidate gene (relative to the above gene region)
     dist_from_xis_list = []
     quick_dict = {}
     for hit in hitsd.keys():
         if hitsd[hit]['contig_title'] == xis_contig and hitsd[hit]['gene_location'] != hitsd[nearest_gene_section]['gene_location']:
             quick_dict[hit] = {}
             dist_from_xis = min(abs(hitsd[hit]['contig_start'] - xis_coordinates[0]),
-                    abs(hitsd[hit]['contig_start'] - xis_coordinates[1]),
-                    abs(hitsd[hit]['contig_end'] - xis_coordinates[0]),
-                    abs(hitsd[hit]['contig_end'] - xis_coordinates[1])
-                    )
+                                abs(hitsd[hit]['contig_start'] - xis_coordinates[1]),
+                                abs(hitsd[hit]['contig_end'] - xis_coordinates[0]),
+                                abs(hitsd[hit]['contig_end'] - xis_coordinates[1])
+                                )
             dist_from_xis_list.append(dist_from_xis)
             quick_dict[hit]['dist_from_xis'] = dist_from_xis
 
@@ -590,12 +603,15 @@ def find_all_gene_regions(name, xis_dict, reference_gene_aa, reference_gene_dna)
     print(name + '-' + str(xis_count) + ':gene sections extracted')
 
     # pass on the alignment file to be aligned
-    align_gene_sections(name, xis_dict, name + '-' + str(xis_count) + '_gene_sections_w_reference.fna')
+    align_gene_sections(xis_dict, name + '-' + str(xis_count) + '_gene_sections_w_reference.fna')
 
 
-def align_gene_sections(name, xis_dict, sequences_to_align):
+def align_gene_sections(xis_dict, sequences_to_align):
+    name = xis_dict['name']
     xis_count = xis_dict['count']
 
+    # FOR CLUSTO, --residuenumber PRINTS THE RESIDUE NUMBER, MAY HELP
+    # VERBOSE OPTION MAY NOT BE NEEDED
     out_file = name + '-' + str(xis_count) + '_aligned.fasta'
     clustalomega_cline = ClustalOmegaCommandline(infile=sequences_to_align, outfile=out_file, verbose=True, auto=True)
     print(clustalomega_cline)
@@ -628,15 +644,15 @@ def align_gene_sections(name, xis_dict, sequences_to_align):
                     seq_base_count += 1
                 dic[base_count]['seq' + str(seq_count) + '_position'] = seq_base_count
 
-    #create a list of absolute positions of alignment where 2 gene sections match
+    # create a list of absolute positions of alignment where 2 gene sections match
     equal_positions = []
     for position in sorted(dic):
         if dic[position][1] == dic[position][2] and dic[position][1] != '-':
-            #print(str(position) + '\t' + str(dic[position]))
+            # print(str(position) + '\t' + str(dic[position]))
             equal_positions.append(position)
 
-    #get each string of matching sequences
-    #OPTION1
+    # get each string of matching sequences
+    # OPTION1
     flag = 'match'
     matching_dict = {}
     mismatching_dict = {}
@@ -661,8 +677,8 @@ def align_gene_sections(name, xis_dict, sequences_to_align):
         else:
             if test == 'match':
                 count += 1
-                #matching_dict[count] = []
-                #matching_dict[count].append(dic[position][1])
+                # matching_dict[count] = []
+                # matching_dict[count].append(dic[position][1])
                 matching_dict[count] = {}
                 matching_dict[count]['start_position'] = position
                 matching_dict[count]['sequence'] = []
@@ -674,10 +690,10 @@ def align_gene_sections(name, xis_dict, sequences_to_align):
                 mismatching_dict['seq' + str(2) + '_' + 'stretch' + str(count)].append(dic[position][2])
             flag = test
 
-    #for each possible direct repeat, get the gene sequence before & after, compare to reference
+    # for each possible direct repeat, get the gene sequence before & after, compare to reference
     uber_dict = {}
     matching_ratios = []
-    for i in range(1,count + 1):
+    for i in range(1, count + 1):
         uber_dict[i] = {}
         uber_dict[i]['direct_repeat'] = ''.join(matching_dict[i]['sequence'])
         uber_dict[i]['start_position'] = matching_dict[i]['start_position']
@@ -693,12 +709,12 @@ def align_gene_sections(name, xis_dict, sequences_to_align):
         uber_dict[i]['ref_match_ratio'] = SequenceMatcher(None, uber_dict[i]['gene_seq'], ''.join(mismatching_REF)).ratio()
         matching_ratios.append(uber_dict[i]['ref_match_ratio'])
 
-    #pick the possible direct repeat that has the best corresponding gene match to reference
-    #NO PLAN IF 2 DIR_REPEATS HAVE MAX RATIOS & SAME LENGTH
+    # pick the possible direct repeat that has the best corresponding gene match to reference
+    # NO PLAN IF 2 DIR_REPEATS HAVE MAX RATIOS & SAME LENGTH
     second_count = 0
     narrowed_dict = {}
     direct_repeat_lengths = []
-    for i in range(1,count + 1):
+    for i in range(1, count + 1):
         if uber_dict[i]['ref_match_ratio'] == max(matching_ratios):
             second_count += 1
             absolute_start_position = uber_dict[i]['start_position']
@@ -706,8 +722,8 @@ def align_gene_sections(name, xis_dict, sequences_to_align):
             direct_repeat = uber_dict[i]['direct_repeat']
             direct_repeat_length = len(uber_dict[i]['direct_repeat'])
             direct_repeat_lengths.append(direct_repeat_length)
-            #UNSURE IF I NEED TO ADD ONE TO THE 1ST KEY
-            #ALSO NEED TO ADD THIS TO THE 2ND CALCULATION AFTER IF SECOND_COUNT...
+            # UNSURE IF I NEED TO ADD ONE TO THE 1ST KEY
+            # ALSO NEED TO ADD THIS TO THE 2ND CALCULATION AFTER IF SECOND_COUNT...
             element_start_positon = dic[uber_dict[i]['start_position']]['seq1_position'] + 1
             element_end_positon = dic[uber_dict[i]['start_position']]['seq2_position']
             narrowed_dict[i] = uber_dict[i]
@@ -740,7 +756,10 @@ def align_gene_sections(name, xis_dict, sequences_to_align):
 
     genome = open(args.genome, 'r')
     sequence = sequence_cutter(genome, xis_dict['contig accession'], element_cut_coordinates, 'FALSE')
-    xis_dict['element GC'] = round(((sequence.count('G') + sequence.count('C'))/len(sequence))*100,2)
+    if len(sequence) == 0:
+        xis_dict['element GC'] = 0
+    else:
+        xis_dict['element GC'] = round(((sequence.count('G') + sequence.count('C'))/len(sequence))*100,2)
     genome.close()
 
     '''
@@ -762,8 +781,9 @@ def align_gene_sections(name, xis_dict, sequences_to_align):
     print('start position:' + str(start_position))
     '''
 
-    #collect bases from each gene section before/after direct repeats to complete the gene
+    # collect bases from each gene section before/after direct repeats to complete the gene
     full_gene_list = []
+
     for position in range(1,absolute_start_position):
         if dic[position]['ref_position'] != 0:
             full_gene_list.append(dic[position][1])
@@ -776,26 +796,32 @@ def align_gene_sections(name, xis_dict, sequences_to_align):
     full_gene_file.write('>' + name + '-' + str(xis_count) + ' full gene sequence' + '\n' + full_gene)
     full_gene_file.close()
 
-    print('-----------------')
-    print(args.name)
-    print(xis_dict['count'])
-    print(xis_dict['reference gene'])
-    print(xis_dict['direct repeat'])
-    print(xis_dict['interruption position'])
-    print(xis_dict['class'])
-    print(xis_dict['xis coordinates'][0])
-    print(xis_dict['xis coordinates'][1])
-    print(xis_dict['xis to edge'])
-    print(xis_dict['xis location'])
-    print(xis_dict['xis orientation'])
-    print(xis_dict['element length'])
-    print(xis_dict['element GC'])
-    print(xis_dict['contig accession'])
-    print(xis_dict['element coordinates'][0])
-    print(xis_dict['element coordinates'][1])
-    # need to print results overview to a file:
+    print(name + '-' + str(xis_count) + ':direct repeat identified & interrupted gene completed')
 
-    # ADD TO PRINTED UPDATES 'COMPLETE' OR SOMETHING
+    reporter(xis_dict)
+
+
+def reporter(xis_dict):
+    genome_file = args.genome.split('/')[-1]
+
+    try:
+        open('xis_summary.txt', 'r')
+    except FileNotFoundError:
+        outfile = open('xis_summary.txt', 'w')
+        outfile.write('Genome Name' + '\t' + 'Genome File' + '\t' + 'xis Number' + '\t' + 'Interrupted Gene' + '\t' + 'Direct Repeat' + '\t' + 'Position Interrupted' + '\t' + 'Top xis Hit' + '\t' + 'Top xis Hit (e)' + '\t' + 'xis Class' + '\t' + 'xis Start' + '\t' + 'xis Stop' + '\t' + 'xis Distance to edge' + '\t' + 'xis Location' + '\t' + 'xis Orientation' + '\t' + 'Element Length' + '\t' + 'Element GC' + '\t' + 'Contig Accession' + '\t' + 'Element Start' + '\t' + 'Element Stop')
+        outfile.write('\n')
+        outfile.close()
+    outfile = open('xis_summary.txt', 'a')
+    outfile.write(xis_dict['name'] + '\t' + genome_file + '\t' + '#' + str(xis_dict['count']) + '\t' + xis_dict['reference gene'] + '\t' + xis_dict['direct repeat'] + '\t' + str(xis_dict['interruption position']) + '\t' + xis_dict['top_xis_hit'] + '\t' + str(xis_dict['evalue_to_known_xis']) + '\t' + xis_dict['class'] + '\t' + str(xis_dict['xis coordinates'][0]) + '\t' + str(xis_dict['xis coordinates'][1]) + '\t' + str(xis_dict['xis to edge']) + '\t' + xis_dict['xis location'] + '\t' + xis_dict['xis orientation'] + '\t' + str(xis_dict['element length']) + '\t' + str(xis_dict['element GC']) + '\t' + xis_dict['contig accession'] + '\t' + str(xis_dict['element coordinates'][0]) + '\t' + str(xis_dict['element coordinates'][1]))
+    outfile.write('\n')
+    outfile.close()
+
+    print(xis_dict['name'] + '-' + str(xis_dict['count']) + ':resuls writen to xis_summary.txt')
+
+    #some_list = []
+    #for i in ('name', 'count', 'reference gene', 'direct repeat', 'interruption position', 'class', 'xis coordinates', 'xis to edge', 'xis location', 'xis orientation', 'element length', 'element GC', 'contig accession', 'element coordinates'):
+        #xis_dict.pop(i)
+    #print(xis_dict)
 
 if __name__ == '__main__':
     args = getArgs()
