@@ -29,6 +29,7 @@ from Bio.Align.Applications import ClustalOmegaCommandline
 from Bio.Blast import NCBIXML
 from difflib import SequenceMatcher
 import argparse
+from operator import itemgetter
 
 EPILOG = '''
     Write something here maybe
@@ -185,6 +186,10 @@ def getArgs():
     return args
 
 
+# ADD A PRE-LOADED XIS_DICT ENTRY WITH ALL FIELDS THAT CAN BE LOADED LATER
+# THIS WILL ALSO FACILITATE SENDING A XIS_CAND TO REPORTER AT ANY TIME IF IT FAILS A TEST, ETC
+
+
 def find_xis_candidates(name):
     '''
     Given a genome and protein sequences of xis, returns xis candidates and their flanking regions from that genome.
@@ -205,89 +210,99 @@ def find_xis_candidates(name):
     # from BLAST results, pull hits
     blast_results = open(name + '_xis_tn_genome.xml', 'r')
     blast_records = NCBIXML.parse(blast_results)
-    xis_hits_dict = {}
-    count = 0
     off_limits_ranges = {}
+    list_of_xis_hits_dicts = []
+    # built a dictionary of all the hits to be sorted
     for blast_record in blast_records:
         for alignment in blast_record.alignments:
             if alignment.accession not in off_limits_ranges.keys():
                 off_limits_ranges[alignment.accession] = []
             for hsp in alignment.hsps:
-                middle_of_hit = round((hsp.query_start+hsp.query_end)/2, 0)
-                if middle_of_hit not in off_limits_ranges[alignment.accession]:
-                    count += 1
-                    xis_hits_dict['hit' + str(count)] = {}
-                    xis_hits_dict['hit' + str(count)]['accession'] = alignment.accession
-                    xis_hits_dict['hit' + str(count)]['start'] = hsp.sbjct_start
-                    xis_hits_dict['hit' + str(count)]['end'] = hsp.sbjct_end
-                    xis_hits_dict['hit' + str(count)]['evalue'] = hsp.expect
-                    xis_hits_dict['hit' + str(count)]['top_xis_hit'] = blast_record.query
-                    if (hsp.frame[0] < 0 and hsp.frame[1] < 0) or (hsp.frame[0] > -1 and hsp.frame[1] > -1):
-                        xis_hits_dict['hit' + str(count)]['strand'] = 'plus'
-                    else:
-                        xis_hits_dict['hit' + str(count)]['strand'] = 'minus'
-                    for i in range(hsp.query_start, hsp.query_end):
-                        off_limits_ranges[alignment.accession].append(i)
+                xis_hits_dict = {}
+                xis_hits_dict['accession'] = alignment.accession
+                xis_hits_dict['start'] = hsp.sbjct_start
+                xis_hits_dict['end'] = hsp.sbjct_end
+                xis_hits_dict['evalue'] = hsp.expect
+                xis_hits_dict['top_xis_hit'] = blast_record.query
+                xis_hits_dict['score'] = hsp.score
+                if (hsp.frame[0] < 0 and hsp.frame[1] < 0) or (hsp.frame[0] > -1 and hsp.frame[1] > -1):
+                    xis_hits_dict['strand'] = 'plus'
+                else:
+                    xis_hits_dict['strand'] = 'minus'
+                list_of_xis_hits_dicts.append(xis_hits_dict)
     blast_results.close()
-    print(name + ':' + str(count) + ' xis candidates identified')
+
+    sorted_by_score = sorted(list_of_xis_hits_dicts, key=itemgetter('score'), reverse=True)
+    sorted_by_evalue = sorted(sorted_by_score, key=itemgetter('evalue'), reverse=False)
+
+    list_of_xis_dicts = []
+    xis_count = 0
+    for hit in sorted_by_evalue:
+        middle_of_hit = round((hit['start']+hit['end'])/2, 0)
+        if middle_of_hit not in off_limits_ranges[hit['accession']]:
+            xis_count += 1
+            xis_hits_dict['hit' + str(xis_count)] = hit
+            for i in range(hit['start'], hit['end']):
+                off_limits_ranges[hit['accession']].append(i)
+
+            # cut the xis_candidates from the contigs based on BLAST results
+            xis_flank = open(name + '-' + str(xis_count) + '_xis_flank.fna', 'w')
+            xis_candidate_sequence = open(name + '-' + str(xis_count) + '_xis_candidate.fna', 'w')
+            contig_title = hit['accession']
+            genome = open(args.genome, 'r')
+            contig_sequence = sequence_cutter(genome, contig_title, 'all', 'FALSE')
+            xis_coordinates = orf_finder(contig_sequence, hit['start'], hit['end'])
+            genome.close()
+            genome = open(args.genome, 'r')
+            xis_fasta = sequence_cutter(genome, contig_title, xis_coordinates)
+            xis_candidate_sequence.write(xis_fasta + '\n')
+            genome.close()
+
+            # log characteristics of the xis candidate to be used in later processing and reporting
+            xis_dict = {}
+            xis_dict['name'] = name
+            xis_dict['xis coordinates'] = xis_coordinates
+            xis_dict['count'] = xis_count
+            xis_dict['contig accession'] = hit['accession']
+            locus_tag = hit['top_xis_hit'].split()[1]
+            xis_dict['top_xis_hit'] = locus_tag
+            xis_dict['class'] = recombinase_class[locus_tag]
+            xis_dict['xis_orientation_on_contig'] = hit['strand']
+            xis_dict['evalue_to_known_xis'] = hit['evalue']
+            list_of_xis_dicts.append(xis_dict)
+
+            # cut the xis_candidates and flanking regions from the contigs based on BLAST results
+            contig_sequence_length = len(contig_sequence)
+            xis_start = xis_coordinates[0]
+            xis_stop = xis_coordinates[1]
+
+            if args.flank < xis_start:
+                flank_start = xis_start - args.flank
+            else:
+                flank_start = 0
+
+            if args.flank < contig_sequence_length:
+                flank_end = xis_stop + args.flank
+            else:
+                flank_end = contig_sequence_length
+
+            genome = open(args.genome, 'r')
+            flank_coordinates = (flank_start, flank_end)
+            flank_fasta = sequence_cutter(genome, contig_title, flank_coordinates)
+            xis_flank.write(flank_fasta + '\n')
+            genome.close()
+            xis_flank.close()
+            xis_candidate_sequence.close()
+
+    print(name + ':' + str(xis_count) + ' xis candidates identified')
 
     # if no hits were found, then quit the program
-    if count == 0:
+    if xis_count == 0:
         return
 
-    # cut the xis_candidates from the contigs based on BLAST results
-    xis_count = 0
-    for hit in xis_hits_dict.values():
-        xis_count += 1
-        xis_flank = open(name + '-' + str(xis_count) + '_xis_flank.fna', 'w')
-        xis_candidate_sequence = open(name + '-' + str(xis_count) + '_xis_candidate.fna', 'w')
-        contig_title = hit['accession']
-        genome = open(args.genome, 'r')
-        contig_sequence = sequence_cutter(genome, contig_title, 'all', 'FALSE')
-        xis_coordinates = orf_finder(contig_sequence, hit['start'], hit['end'])
-        genome.close()
-        genome = open(args.genome, 'r')
-        xis_fasta = sequence_cutter(genome, contig_title, xis_coordinates)
-        xis_candidate_sequence.write(xis_fasta + '\n')
-        genome.close()
-
-        # log characteristics of the xis candidate to be used in later processing and reporting
-        xis_dict = {}
-        xis_dict['name'] = name
-        xis_dict['xis coordinates'] = xis_coordinates
-        xis_dict['count'] = xis_count
-        xis_dict['contig accession'] = hit['accession']
-        locus_tag = hit['top_xis_hit'].split()[1]
-        xis_dict['top_xis_hit'] = locus_tag
-        xis_dict['class'] = recombinase_class[locus_tag]
-        xis_dict['xis_orientation_on_contig'] = hit['strand']
-        xis_dict['evalue_to_known_xis'] = hit['evalue']
-
-        # cut the xis_candidates and flanking regions from the contigs based on BLAST results
-        contig_sequence_length = len(contig_sequence)
-        xis_start = xis_coordinates[0]
-        xis_stop = xis_coordinates[1]
-
-        if args.flank < xis_start:
-            flank_start = xis_start - args.flank
-        else:
-            flank_start = 0
-
-        if args.flank < contig_sequence_length:
-            flank_end = xis_stop + args.flank
-        else:
-            flank_end = contig_sequence_length
-
-        genome = open(args.genome, 'r')
-        flank_coordinates = (flank_start, flank_end)
-        flank_fasta = sequence_cutter(genome, contig_title, flank_coordinates)
-        xis_flank.write(flank_fasta + '\n')
-        genome.close()
-        xis_flank.close()
-        xis_candidate_sequence.close()
-
-        # pass on the xis_candidates and flanking regions to search for interrupted genes in the flanking regions
-        find_interrupted_gene(xis_dict, name + '-' + str(xis_count) + '_xis_flank.fna')
+    # pass on the xis_candidates and flanking regions to search for interrupted genes in the flanking regions
+    for xis_dict in list_of_xis_dicts:
+        find_interrupted_gene(xis_dict, name + '-' + str(xis_dict['count']) + '_xis_flank.fna')
 
 
 def sequence_cutter(genome, sequence_id, cut_coordinates='all', header='TRUE'):
@@ -408,8 +423,7 @@ def find_interrupted_gene(xis_dict, xis_plus_flank):
     # if interrupted gene isn't a previously known gene, BLAST against a larger protein database
     if sortme == {}:  # AND SOME OTHER CRITERIA ABOUT THE BLAST RESULTS?
         # for local blast against a protein db, use...
-        else:
-            blastx_cline = NcbiblastxCommandline(query=xis_plus_flank, db=args.protein_set, culling_limit=15, evalue=1e-15, outfmt=5, out=name + '-' + str(xis_count) + '_xisflank_x_nr.xml')
+        blastx_cline = NcbiblastxCommandline(query=xis_plus_flank, db=args.protein_set, culling_limit=15, evalue=1e-15, outfmt=5, out=name + '-' + str(xis_count) + '_xisflank_x_nr.xml')
         print(str(blastx_cline))
         stdout, stderr = blastx_cline()
         print(name + '-' + str(xis_count) + ':xis w/ flank - nr BLAST complete')
@@ -579,6 +593,11 @@ def find_all_gene_regions(xis_dict, reference_gene_aa, reference_gene_dna):
         for hit in quick_dict.keys():
             if quick_dict[hit]['dist_from_xis'] == min(dist_from_xis_list):
                 second_gene_section = hit
+
+    if (hitsd[nearest_gene_section]['contig_start'] in range(hitsd[second_gene_section]['contig_start'], hitsd[second_gene_section]['contig_end'])
+        or hitsd[nearest_gene_section]['contig_end'] in range(hitsd[second_gene_section]['contig_start'], hitsd[second_gene_section]['contig_end'])):
+        print(name + '-' + str(xis_count) + ':2 gene sections were found to overlap')
+        return
 
     xis_dict['distal_gene_orientation'] = hitsd[second_gene_section]['strand']
 
