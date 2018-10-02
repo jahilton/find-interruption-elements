@@ -1,7 +1,7 @@
 # I THINK COMPLETED GENE HAS 3 TOO MANY BP AT FRONT - BUT THAT IS HOW IT IS ALIGNED
 # MAYBE INCLUDE REFERENCE GENE IN THE HEADER OF THE COMPLETED GENE
 # NEED TO FIGURE OUT WHAT IS GOING ON IN ALIGNMENT ETC WITH XIS GENES THAT ARENT ON INT ELE & HOW THEY ARE REPORTED
-# I THINK THE INITIAL XIS BLAST RESULTS ARENT BEING PARSED IN ORDER
+# IF MAKEBLASTDB NEEDS TO BE RUN, CREATE A HUMAN-FRIENDLY ERROR MESSAGE
 
 # install ncbi tools
 # pull nr db if local blasting
@@ -11,7 +11,7 @@
 # makeblastdb -in genome -dbtype nucl -parse_seqids
 # makeblastdb -in known_interrupted_genes_protein.faa -dbtype prot -parse_seqids
 # and for nr
-# add an error message so it prints out a more human-friendly message and the command required to create the blastdb
+
 # how to get concat_cyano.genes.fna/faa (AND NEED TO CHANGE THAT NAME, maybe UDPATE DB)
 # Pulled all IMG JGI cyano genome assemblies, got the IMG_nnnnn ID (https://img.jgi.doe.gov/cgi-bin/w/main.cgi)
 # Crossed that with all available downloadable projects at https://genome.jgi.doe.gov/portal/
@@ -234,13 +234,10 @@ def find_xis_candidates(name):
     # from BLAST results, pull hits
     blast_results = open(name + '_xis_tn_genome.xml', 'r')
     blast_records = NCBIXML.parse(blast_results)
-    off_limits_ranges = {}
-    list_of_xis_hits_dicts = []
-    # built a dictionary of all the hits to be sorted
+    list_of_hits_dicts = []
+    # build a dictionary of all the hits to be sorted
     for blast_record in blast_records:
         for alignment in blast_record.alignments:
-            if alignment.accession not in off_limits_ranges.keys():
-                off_limits_ranges[alignment.accession] = []
             for hsp in alignment.hsps:
                 xis_dict = get_xis_candidate_structure()
                 xis_dict['contig accession'] = alignment.accession
@@ -253,43 +250,46 @@ def find_xis_candidates(name):
                     xis_dict['xis_orientation_on_contig'] = 'plus'
                 else:
                     xis_dict['xis_orientation_on_contig'] = 'minus'
-                list_of_xis_hits_dicts.append(xis_dict)
+                list_of_hits_dicts.append(xis_dict)
     blast_results.close()
 
-    sorted_by_score = sorted(list_of_xis_hits_dicts, key=itemgetter('score'), reverse=True)
-    sorted_by_evalue = sorted(sorted_by_score, key=itemgetter('evalue_to_known_xis'), reverse=False)
-
+    # sort blast hits and pull one per genome region
+    off_limits_ranges = {}
     list_of_xis_dicts = []
     xis_count = 0
-    for hit_dict in sorted_by_evalue:
-        middle_of_hit = round((hit_dict['start']+hit_dict['end'])/2, 0)
-        if middle_of_hit not in off_limits_ranges[hit_dict['contig accession']]:
+    sorted_by_score = sorted(list_of_hits_dicts, key=itemgetter('score'), reverse=True)
+    sorted_by_evalue = sorted(sorted_by_score, key=itemgetter('evalue_to_known_xis'), reverse=False)
+    for xis_dict in sorted_by_evalue:
+        if xis_dict['contig accession'] not in off_limits_ranges.keys():
+            off_limits_ranges[alignment.accession] = []
+        middle_of_hit = round((xis_dict['start']+xis_dict['end'])/2, 0)
+        if middle_of_hit not in off_limits_ranges[xis_dict['contig accession']]:
             xis_count += 1
-            hit_dict['count'] = xis_count
-            for i in range(hit_dict['start'], hit_dict['end']):
-                off_limits_ranges[hit_dict['contig accession']].append(i)
+            xis_dict['count'] = xis_count
+            for i in range(xis_dict['start'], xis_dict['end']):
+                off_limits_ranges[xis_dict['contig accession']].append(i)
 
             # cut the xis_candidates from the contigs based on BLAST results
-            xis_flank = open(name + '-' + str(xis_count) + '_xis_flank.fna', 'w')
-            xis_candidate_sequence = open(name + '-' + str(xis_count) + '_xis_candidate.fna', 'w')
-            contig_title = hit_dict['contig accession']
+            contig_title = xis_dict['contig accession']
             genome = open(args.genome, 'r')
             contig_sequence = sequence_cutter(genome, contig_title, 'all', 'FALSE')
-            xis_coordinates = orf_finder(contig_sequence, hit_dict['start'], hit_dict['end'])
-            genome.close()
-            genome = open(args.genome, 'r')
-            xis_fasta = sequence_cutter(genome, contig_title, xis_coordinates)
-            xis_candidate_sequence.write(xis_fasta + '\n')
+            xis_coordinates = orf_finder(contig_sequence, xis_dict['start'], xis_dict['end'])
             genome.close()
 
             # log characteristics of the xis candidate to be used in later processing and reporting
-            hit_dict['name'] = name
-            hit_dict['xis coordinates'] = xis_coordinates
-            hit_dict['count'] = xis_count
-            locus_tag = hit_dict['top_xis_hit'].split()[1]
-            hit_dict['top_xis_hit'] = locus_tag
-            hit_dict['class'] = recombinase_class[locus_tag]
-            list_of_xis_dicts.append(hit_dict)
+            xis_dict['name'] = name
+            xis_dict['xis coordinates'] = xis_coordinates
+            locus_tag = xis_dict['top_xis_hit'].split()[1]
+            xis_dict['top_xis_hit'] = locus_tag
+            xis_dict['class'] = recombinase_class[locus_tag]
+            list_of_xis_dicts.append(xis_dict)
+
+            genome = open(args.genome, 'r')
+            xis_fasta = sequence_cutter(genome, contig_title, xis_coordinates)
+            xis_candidate_sequence = open(name + '-' + str(xis_count) + '_xis_candidate.fna', 'w')
+            xis_candidate_sequence.write(xis_fasta + '\n')
+            xis_candidate_sequence.close()
+            genome.close()
 
             # cut the xis_candidates and flanking regions from the contigs based on BLAST results
             contig_sequence_length = len(contig_sequence)
@@ -309,10 +309,10 @@ def find_xis_candidates(name):
             genome = open(args.genome, 'r')
             flank_coordinates = (flank_start, flank_end)
             flank_fasta = sequence_cutter(genome, contig_title, flank_coordinates)
+            xis_flank = open(name + '-' + str(xis_count) + '_xis_flank.fna', 'w')
             xis_flank.write(flank_fasta + '\n')
-            genome.close()
             xis_flank.close()
-            xis_candidate_sequence.close()
+            genome.close()
 
     print(name + ':' + str(xis_count) + ' xis candidates identified')
 
