@@ -175,8 +175,6 @@ def getArgs():
                         help="The fasta file of the genome to search for interruption elements")
     parser.add_argument('--name',
                         help="Short nickname for genome, to be used in output files")
-    parser.add_argument('--xis_set',
-                        help="The protein sequences of known xis genes")
     parser.add_argument('--protein_set',
                         help="The protein sequence database used to identify interrupted genes")
     parser.add_argument('--flank',
@@ -226,7 +224,7 @@ def find_xis_candidates(name):
     '''
 
     # BLAST xis protein gene sequences into genome
-    tblastn_cline = NcbitblastnCommandline(query=args.xis_set, db=args.genome, evalue=1e-20, outfmt=5, out=name + '_xis_tn_genome.xml')
+    tblastn_cline = NcbitblastnCommandline(query='full_xis_set.faa', db=args.genome, evalue=1e-20, outfmt=5, out=name + '_xis_tn_genome.xml')
     print(str(tblastn_cline))
     stdout, stderr = tblastn_cline()
     print(name + ':xis_set-genome BLAST complete')
@@ -261,7 +259,7 @@ def find_xis_candidates(name):
     sorted_by_evalue = sorted(sorted_by_score, key=itemgetter('evalue_to_known_xis'), reverse=False)
     for xis_dict in sorted_by_evalue:
         if xis_dict['contig accession'] not in off_limits_ranges.keys():
-            off_limits_ranges[alignment.accession] = []
+            off_limits_ranges[xis_dict['contig accession']] = []
         middle_of_hit = round((xis_dict['start']+xis_dict['end'])/2, 0)
         if middle_of_hit not in off_limits_ranges[xis_dict['contig accession']]:
             xis_count += 1
